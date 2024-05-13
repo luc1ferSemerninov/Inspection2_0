@@ -59,3 +59,4 @@ def handle_callback(call):
 def start_bot():
     t = threading.Thread(target=bot.polling, daemon=True)
     t.start()
+
