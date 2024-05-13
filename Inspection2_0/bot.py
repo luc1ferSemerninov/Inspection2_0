@@ -14,13 +14,13 @@ bot = telebot.TeleBot(token)
 
 print(bot.get_me().username)
 
-for i in all_objects:
-    time = i.time_start
-    group = i.group_id
-    zone = i.zone
-    task = i.task
-    department = i.department
-    H = i.H
+# for i in all_objects:
+#     # time = i.time_start
+#     # group = i.group_id
+#     # zone = i.zone
+#     # task = i.task
+#     # department = i.department
+#     # H = i.H
 
 def set_webhook(request):
     s = bot.set_webhook(webhook_url + '/webhook/')
