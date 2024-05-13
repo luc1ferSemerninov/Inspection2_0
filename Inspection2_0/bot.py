@@ -14,13 +14,14 @@ bot = telebot.TeleBot(token)
 
 print(bot.get_me().username)
 
-# for i in all_objects:
-#     # time = i.time_start
-#     # group = i.group_id
-#     # zone = i.zone
-#     # task = i.task
-#     # department = i.department
-#     # H = i.H
+print(all_objects)
+
+for i in all_objects:
+    time = i["time_start"]
+    group = i["group_id"]
+    zone = i["zone"]
+    department = i["department"]
+    H = i["H"]
 
 def set_webhook(request):
     s = bot.set_webhook(webhook_url + '/webhook/')
@@ -39,7 +40,6 @@ def webhook(request):
 @bot.message_handler()
 def test_message(message):
     bot.reply_to(message, "Привет")
-    print(all_objects)
     return 200
 
 def start_bot():
