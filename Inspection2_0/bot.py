@@ -22,18 +22,13 @@ def webhook(request):
     if request.method == "POST":
         update = json.loads(request.body)
         bot.process_update(update)
-        return 200
-    
-    
+        return HttpResponse(status=200)
 
 @bot.message_handler()
 def test_message(message):
     bot.reply_to(message, "Привет")
     return 200
 
-#Delete this later
 def start_bot():
-    bot.remove_webhook()
-
     t = threading.Thread(target=bot.polling, daemon=True)
     t.start()
