@@ -4,11 +4,23 @@ from django.http.response import HttpResponse
 import json
 import threading
 
+from .models import Start
+
+all_objects = Start.objects.values()
+
 token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
 webhook_url = "ТВОЙ IP"
 bot = telebot.TeleBot(token)
 
 print(bot.get_me().username)
+
+for i in all_objects:
+    time = i.time_start
+    group = i.group_id
+    zone = i.zone
+    task = i.task
+    department = i.department
+    H = i.H
 
 def set_webhook(request):
     s = bot.set_webhook(webhook_url + '/webhook/')
@@ -27,6 +39,7 @@ def webhook(request):
 @bot.message_handler()
 def test_message(message):
     bot.reply_to(message, "Привет")
+    print(all_objects)
     return 200
 
 def start_bot():
