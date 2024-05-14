@@ -1,5 +1,5 @@
 from django.db import models
- 
+
 class Start(models.Model):
     time_start = models.TimeField("Время начала")
     group_id = models.BigIntegerField("Айди группы")
