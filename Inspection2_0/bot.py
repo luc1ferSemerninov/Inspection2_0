@@ -1,16 +1,13 @@
-
 import telebot
 from django.http.response import HttpResponse
 import json
 import threading
 
 from datetime import datetime
-from django.utils import timezone
-import pytz
 import datetime
 from .models import Start
 from .models import log
-from .models import Operators #добавил еще таблицу операторов
+from .models import Operators
 
 all_objects = Start.objects.values()
 
@@ -20,20 +17,27 @@ token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
 webhook_url = "ТВОЙ IP"
 bot = telebot.TeleBot(token)
 
+
 print(bot.get_me().username)
 
-print(all_objects)
+print(all_objects) 
+# Выводит все объекты (id, group_id и т.д)
 
+
+# Цикл который проходиться по созданным переменным и отправляет кнопку "Принять"
 for i in all_objects:
     time = i["time_start"]
     group = i["group_id"]
     zone = i["zone"]
     department = i["department"]
     H = i["H"]
-    send_photo_button = telebot.types.InlineKeyboardButton("Принять", callback_data=f'claim{H}')
-    keyboard = telebot.types.InlineKeyboardMarkup().add(send_photo_button)
+    send_photo_button = telebot.types.InlineKeyboardButton("Принять", callback_data=f'claim{H}') # Создаёт кнопку "Принять"
+    keyboard = telebot.types.InlineKeyboardMarkup().add(send_photo_button) # Создаёт объект InlineKeyboardMarkup, встроенная клавиатура
 
+    # Отправляет сообщение, пример - "Администратор Вам пришел: Вечерний".   С кнопкой "Принять"
     bot.send_message(chat_id = chat_id, message_thread_id= group, text = f'{department} Вам пришел: {zone}', reply_markup=keyboard)
+
+
 
 def set_webhook(request):
     s = bot.set_webhook(webhook_url + '/webhook/')
@@ -43,24 +47,28 @@ def set_webhook(request):
         return HttpResponse("Error")
 
 
+
+
 def webhook(request):
     if request.method == "POST":
         update = json.loads(request.body)
         bot.process_update(update)
         return HttpResponse(status=200)
 
+
+# Функция ответа пользователю на его сообщение
 @bot.message_handler()
 def test_message(message):
     bot.reply_to(message, "Привет")
     return 200
 
 
+
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     userid = call.from_user.id
     username = call.from_user.username
-
-
 
     if call.data.startswith('claim'):
         H = call.data.replace('claim', '')  # Получаем значение H из callback_data
@@ -79,7 +87,7 @@ def handle_callback(call):
             teleid = userid,
             zone = zone,
             result = 1,
-            comment = "Принял обход",#тут было Test, но правильнее будет записывать что человек принял обход
+            comment = "Принял обход",
             department = department,
             H = H,
             punkt = 1,
@@ -89,7 +97,6 @@ def handle_callback(call):
         #человек принял обход и дальше мы запускаем функцию, которая будет проверять на каком пункте человек, и отправлять следующий пункт
         Next(userid, H)
 
-
     if call.data.startswith("accept"):
         #тут у тебя будет обработка нажатия accept
         pass
@@ -97,7 +104,6 @@ def handle_callback(call):
         #тут у тебя будет обработка нажатия deny
         pass
         
-
 
 #вот эта функция
 def Next(userid, H):
@@ -126,4 +132,3 @@ def Next(userid, H):
 def start_bot():
     t = threading.Thread(target=bot.polling, daemon=True)
     t.start()
-
