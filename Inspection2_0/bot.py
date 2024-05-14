@@ -7,9 +7,10 @@ import threading
 from datetime import datetime
 from django.utils import timezone
 import pytz
-
+import datetime
 from .models import Start
 from .models import log
+from .models import Operators #добавил еще таблицу операторов
 
 all_objects = Start.objects.values()
 
@@ -56,44 +57,69 @@ def test_message(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
+    userid = call.from_user.id
+    username = call.from_user.username
+
+
+
     if call.data.startswith('claim'):
         H = call.data.replace('claim', '')  # Получаем значение H из callback_data
         # Отправляем личное сообщение пользователю
         bot.send_message(call.from_user.id, "Вы приняли обход")
         bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=chat_id, message_id=call.message.id)
 
-        current_datetime = datetime.now()
+        current_datetime = datetime.datetime.now()#тут было datetime.now(), вот он ругался
         current_date_iso = current_datetime.date().isoformat()
-        # current_time_iso = current_datetime.time().isoformat()
-
-        timezone.activate(pytz.timezone("Asia/Almaty"))
-
-        current_time = timezone.localtime().time()
-
-        formatted_time = current_time.strftime("%H:%M:%S")
-
+        time_now = current_datetime.time().strftime("%H:%M:%S")#вот так правильнее будет записывать время
         # Создаем объект модели log
         log_entry = log.objects.create(
             date = current_date_iso,
-            time = formatted_time,
-            who = call.from_user.username,
-            teleid = call.from_user.id,
+            time = time_now,
+            who = username,
+            teleid = userid,
             zone = zone,
             result = 1,
-            comment = "Test",
+            comment = "Принял обход",#тут было Test, но правильнее будет записывать что человек принял обход
             department = department,
             H = H,
             punkt = 1,
-            message_id = (call.message.id+1)
+            message_id = (call.message.id)
         )
         log_entry.save()
+        #человек принял обход и дальше мы запускаем функцию, которая будет проверять на каком пункте человек, и отправлять следующий пункт
+        Next(userid, H)
 
-        bot.send_photo(chat_id=chat_id, photo="https://price.next.kz/Task_oper/1/Reception.jfif", caption=f'{zone}')
+
+    if call.data.startswith("accept"):
+        #тут у тебя будет обработка нажатия accept
+        pass
+    if call.data.startswith("deny"):
+        #тут у тебя будет обработка нажатия deny
+        pass
+        
 
 
+#вот эта функция
+def Next(userid, H):
+    all = Operators.objects.values()#это таблица с обходом, откуда мы берем все значения
+    last_punkt = len(all)
+    queryset = log.objects.filter(teleid=userid, date=datetime.date.today(), H=H).order_by('id')
+    results = list(queryset)[0]
+    if last_punkt == results.punkt-1:#если последний пункт и тот пункт на котором пользователь равны
+        pass
+    # for i in s:
+    #     punkt = i["idPunkt"]#так же как в прошлый раз закидываем эти значения в переменные
+    #     zone = i["Zone"]
+    #     ToDo = i["ToDo"]
+    #     link = i["link"]
+    #     H = i["H"]
+    #     acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{userid}:{H}')#это будет кнопка Готово, которая в себе будет содержать userid и H
+    #     deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{userid}:{H}')#а это кнока Не получается
+    #     keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)#таким образом мы закидываем кнопки в клавиатуру
 
-# def Next():
 
+    #     bot.send_photo(chat_id=chat_id, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)#отправляем в чат
+    #     pass
 
 
 
