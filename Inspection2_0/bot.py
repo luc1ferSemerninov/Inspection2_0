@@ -90,6 +90,7 @@ def handle_callback(call):
             punkt=1,
             message_id=call.message.id
         )
+        
         log_entry.save()
         # Человек принял обход и дальше мы запускаем функцию, которая будет проверять на каком пункте человек, и отправлять следующий пункт
         Next(userid, H)
