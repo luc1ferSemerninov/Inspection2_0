@@ -90,7 +90,28 @@ def handle_callback(call):
         department = parts[1]#[0] это слово "claim"
         H = parts[2]
         bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=chat_id, message_id=call.message.id)
-        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone="Принял обход", punkt=1)
+
+        # Отправляем личное сообщение пользователю
+        bot.send_message(call.from_user.id, "Вы приняли обход")
+
+        current_datetime = datetime.datetime.now()
+        current_date_iso = current_datetime.date().isoformat()
+        time_now = current_datetime.time().strftime("%H:%M:%S")
+        # Создаем объект модели log
+        log_entry = log.objects.create(
+            date=current_date_iso,
+            time=time_now,
+            who=username,
+            teleid=userid,
+            zone="Принял обход",
+            result=1,
+            comment="+",
+            department=department,
+            H=H,
+            punkt=1,
+            message_id=call.message.id
+        )
+        log_entry.save()
         # Человек принял обход и дальше мы запускаем функцию, которая будет проверять на каком пункте человек, и отправлять следующий пункт
         Next(userid, H, 1, username)
 
