@@ -13,20 +13,41 @@ webhook_url = "ТВОЙ IP"
 
 bot = telebot.TeleBot(token)
 
+def logs(username, userid, department, message_id, H, zone, punkt):
+    current_datetime = datetime.datetime.now()
+    current_date_iso = current_datetime.date().isoformat()
+    time_now = current_datetime.time().strftime("%H:%M:%S")
+    log_entry = log.objects.create(
+                date=current_date_iso,
+                time=time_now,
+                who=username,
+                teleid=userid,
+                zone=zone,
+                result=1,
+                comment="+",
+                department=department,
+                H=H,
+                punkt=punkt,
+                message_id=message_id
+            )
+
+    log_entry.save()
 
 def start_time():
     all_objects = Start.objects.values()
     # Цикл, который проходится по созданным переменным и отправляет кнопку "Принять"
     for i in all_objects:
         time_start = i["time_start"]
+        time_start = time_start.strftime("%H:%M")
         group = i["group_id"]
         zone = i["zone"]  # название обхода
         department = i["department"]
         H = i["H"]
-        time_now = datetime.datetime.now().time().strftime("%H:%M:%S")
-        if time_now == time_start:  # Сравниваем текущее время с временем начала
-            send_inspection(group, department, zone, H)
-            time.sleep(60)  # Подождать 60 секунд перед следующим запуском
+        time_now = datetime.datetime.now().time().strftime("%H:%M")
+        print(time_now, time_start)
+        # if time_now == time_start:  # Сравниваем текущее время с временем начала
+        send_inspection(group, department, zone, H)
+    time.sleep(60)
 
 
 def send_inspection(group, department, zone, H):
@@ -66,76 +87,74 @@ def handle_callback(call):
 
     if call.data.startswith('claim'):
         parts = call.data.split(":")
-        department = parts[0]
-        H = parts[1]
+        department = parts[1]#[0] это слово "claim"
+        H = parts[2]
         bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=chat_id, message_id=call.message.id)
-
-        # Отправляем личное сообщение пользователю
-        bot.send_message(call.from_user.id, "Вы приняли обход")
-
-        current_datetime = datetime.datetime.now()
-        current_date_iso = current_datetime.date().isoformat()
-        time_now = current_datetime.time().strftime("%H:%M:%S")
-        # Создаем объект модели log
-        log_entry = log.objects.create(
-            date=current_date_iso,
-            time=time_now,
-            who=username,
-            teleid=userid,
-            zone="Принял обход",
-            result=1,
-            comment="+",
-            department=department,
-            H=H,
-            punkt=1,
-            message_id=call.message.id
-        )
-        
-        log_entry.save()
+        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone="Принял обход", punkt=1)
         # Человек принял обход и дальше мы запускаем функцию, которая будет проверять на каком пункте человек, и отправлять следующий пункт
-        Next(userid, H)
+        Next(userid, H, 1, username)
 
-    if call.data.startswith("accept"):
+    elif call.data.startswith("accept"):
+        bot.delete_message(userid, call.message.id)
         parts = call.data.split(":")
-        userid = parts[0]
+        # Ensure that call.data has the required parts
         H = parts[1]
-        bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=chat_id, message_id=call.message.id)
-        Next(userid, H)
+        punkt = int(parts[2])
+        all_operators = Operators.objects.values()  # This should fetch all relevant operator data
 
-    if call.data.startswith("deny"):
+        for operator in all_operators:
+            if punkt == operator["idPunkt"]:  # Check if the current operator matches the specified punkt
+                zone = operator["Zone"]
+                ToDo = operator["ToDo"]
+                link = operator["link"]
+                H = operator["H"]  # Overwriting H might not be necessary; depends on your logic
+                
+                # Assuming logs and Next functions are defined elsewhere
+                logs(username=username, userid=userid, department="Оператор", message_id=call.message.id, H=H, zone=zone, punkt=punkt)
+                Next(userid, H, punkt, username)
+                break  # Exit the loop once the matching operator is found and processed
+
+
+    elif call.data.startswith("deny"):
         parts = call.data.split(":")
-        userid = parts[0]
         H = parts[1]
-        bot.edit_message_text(f"@{call.from_user.username} Отклонил обход", chat_id=chat_id, message_id=call.message.id)
+        punkt = int(parts[2])
+        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H)
+        Next(userid, H, punkt, username)
 
-        bot.send_message(call.from_user.id, "Вы отклонили обход")
-        Next(userid, H)
 
+def Next(userid, H, punkt, username):
+    all_operators = Operators.objects.values()  # Fetch all relevant operator data
+    
+    queryset = log.objects.filter(teleid=userid, date=datetime.datetime.today(), H=H).order_by('id')
+    results = queryset.first()
+    print(punkt)
 
-async def Next(userid, H):
-    all = Operators.objects.values()  # это таблица с обходом, откуда мы берем все значения
-    last_punkt = len(all)
-    queryset = log.objects.filter(teleid=userid, date=datetime.date.today(), H=H).order_by('id')
-    results = list(queryset)[0]
-    if last_punkt == results.punkt - 1:  # если последний пункт и тот пункт на котором пользователь равны
-        pass
-    for i in all:
-        punkt = i["idPunkt"]  # так же как в прошлый раз закидываем эти значения в переменные
-        zone = i["Zone"]
-        ToDo = i["ToDo"]
-        link = i["link"]
-        H = i["H"]
-        acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}')  # это будет кнопка Готово, которая в себе будет содержать userid и H
-        deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}')  # а это кнопка Не получается
-        keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)  # таким образом мы закидываем кнопки в клавиатуру
+    for operator in all_operators:
+        if len(all_operators) < punkt:  # If last punkt and current punkt match
+                if punkt == operator["idPunkt"]:
+                    zone = operator["Zone"]
+                    ToDo = operator["ToDo"]
+                    link = operator["link"]
+                    H = operator["H"]
+                    
+                    acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}:{punkt+1}')
+                    deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}:{punkt+1}')
+                    keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)
 
-        bot.send_photo(chat_id=chat_id, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)  # отправляем в чат
+                    bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
+                    break
+        else:
+            finish(userid, username, results)
+            break
+def finish(userid, username, results):
+    bot.send_message(chat_id=userid, text="Вы прошли обход")
+    bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
 
 
 def start_bot():
-    t = threading.Thread(target=bot.polling, daemon=True)
-    t.start()
-
-
-start_bot()  # Запуск бота в отдельном потоке
-start_time()  # Запуск функции проверки времени каждую минуту
+    # Start bot in a separate thread
+    bot_thread = threading.Thread(target=bot.polling, daemon=True)
+    bot_thread1 = threading.Thread(target=start_time, daemon=True)
+    bot_thread.start()
+    bot_thread1.start()
