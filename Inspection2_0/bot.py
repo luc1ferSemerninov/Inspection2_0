@@ -145,32 +145,36 @@ def handle_callback(call):
 
 
 def Next(userid, H, punkt, username):
-    all_operators = Operators.objects.values()  # Fetch all relevant operator data
+    all_operators = Operators.objects.values()  # Получаем все данные операторов
     
     queryset = log.objects.filter(teleid=userid, date=datetime.datetime.today(), H=H).order_by('id')
     results = queryset.first()
     print(punkt)
 
-    for operator in all_operators:
-        if len(all_operators) < punkt:  # If last punkt and current punkt match
-                if punkt == operator["idPunkt"]:
-                    zone = operator["Zone"]
-                    ToDo = operator["ToDo"]
-                    link = operator["link"]
-                    H = operator["H"]
-                    
-                    acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}:{punkt+1}')
-                    deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}:{punkt+1}')
-                    keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)
+    if punkt < len(all_operators):  # Проверяем, что пункт в пределах количества операторов
+        for operator in all_operators:
+            if punkt == operator["idPunkt"]:  # Если текущий пункт совпадает с idPunkt оператора
+                zone = operator["Zone"]
+                ToDo = operator["ToDo"]
+                link = operator["link"]
+                H = operator["H"]
+                            
+                acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}:{punkt+1}')
+                deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}:{punkt+1}')
+                keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)
 
-                    bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
-                    break
-        else:
-            finish(userid, username, results)
-            break
+                bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
+                break
+    else:
+        finish(userid, username, results)  # Завершаем выполнение, если пункт превышает количество операторов
+
 def finish(userid, username, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
-    bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
+    bot.send_message(chat_id=chat_id, text=f"@{username} Прошел обход")
+
+
+    # bot.edit_message_text(f"@{username} Прошел обход", chat_id=chat_id, message_id=results.message_id)
+    # bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
 
 
 def start_bot():
