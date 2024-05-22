@@ -5,6 +5,7 @@ import json
 import threading
 import time
 import datetime
+from telebot import types
 from .models import Start, log, Operators
 
 chat_id = -1002003805171
@@ -12,6 +13,52 @@ token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
 webhook_url = "ТВОЙ IP"
 
 bot = telebot.TeleBot(token)
+
+
+
+# Добавил пока что формальную регистрацию
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome_new_member(message):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    start_button = types.KeyboardButton('Регистрация')
+    keyboard.add(start_button)
+    bot.send_message(message.chat.id, 'Пройдите регистрацию', reply_markup=keyboard)
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    start_button = types.KeyboardButton('Регистрация')
+    keyboard.add(start_button)
+    bot.send_message(message.chat.id, 'Пройдите регистрацию', reply_markup=keyboard)
+
+# Выбор должности
+@bot.message_handler(func=lambda message: message.text == 'Регистрация')
+def handle_registration(message):
+    markup = types.InlineKeyboardMarkup()
+    admin_button = types.InlineKeyboardButton("Админ", callback_data="admin")
+    operator_button = types.InlineKeyboardButton("Опер", callback_data="operator")
+    markup.add(admin_button, operator_button)
+    
+    bot.send_message(message.chat.id, 'Выберите должность', reply_markup=markup)
+    
+    # Удаление сообщения с кнопкой "Регистрация"
+    # bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+
+
+# Отправка ссылки на группу в зависимости от должности, пока что без сохранения в БД
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    hide_keyboard = types.ReplyKeyboardRemove()
+    if call.data == "admin":
+        bot.send_message(call.from_user.id, "Ссылка на инвайт для админов: https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+    elif call.data == "operator":
+        bot.send_message(call.from_user.id, "Ссылка на инвайт для операторов: https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+    
+    # Удаление сообщения с инлайн-кнопками
+    bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+
+
 
 def logs(username, userid, department, message_id, H, zone, punkt):
     current_datetime = datetime.datetime.now()
@@ -73,11 +120,11 @@ def webhook(request):
         return HttpResponse(status=200)
 
 
-@bot.message_handler()
-def test_message(message):
-    if message.from_user.id == message.chat.id:
-        bot.reply_to(message, "Привет")
-    return 200
+# @bot.message_handler()
+# def test_message(message):
+#     if message.from_user.id == message.chat.id:
+#         bot.reply_to(message, "Привет")
+#     return 200
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -87,7 +134,7 @@ def handle_callback(call):
 
     if call.data.startswith('claim'):
         parts = call.data.split(":")
-        department = parts[1]#[0] это слово "claim"
+        department = parts[1]  # [0] это слово "claim"
         H = parts[2]
         bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=chat_id, message_id=call.message.id)
 
@@ -97,7 +144,7 @@ def handle_callback(call):
         current_datetime = datetime.datetime.now()
         current_date_iso = current_datetime.date().isoformat()
         time_now = current_datetime.time().strftime("%H:%M:%S")
-        # Создаем объект модели log
+
         log_entry = log.objects.create(
             date=current_date_iso,
             time=time_now,
@@ -112,29 +159,26 @@ def handle_callback(call):
             message_id=call.message.id
         )
         log_entry.save()
-        # Человек принял обход и дальше мы запускаем функцию, которая будет проверять на каком пункте человек, и отправлять следующий пункт
+
         Next(userid, H, 1, username)
 
     elif call.data.startswith("accept"):
         bot.delete_message(userid, call.message.id)
         parts = call.data.split(":")
-        # Ensure that call.data has the required parts
         H = parts[1]
         punkt = int(parts[2])
-        all_operators = Operators.objects.values()  # This should fetch all relevant operator data
+        all_operators = Operators.objects.values()
 
         for operator in all_operators:
-            if punkt == operator["idPunkt"]:  # Check if the current operator matches the specified punkt
+            if punkt == operator["idPunkt"]:
                 zone = operator["Zone"]
                 ToDo = operator["ToDo"]
                 link = operator["link"]
-                H = operator["H"]  # Overwriting H might not be necessary; depends on your logic
-                
-                # Assuming logs and Next functions are defined elsewhere
+                H = operator["H"]
+
                 logs(username=username, userid=userid, department="Оператор", message_id=call.message.id, H=H, zone=zone, punkt=punkt)
                 Next(userid, H, punkt, username)
-                break  # Exit the loop once the matching operator is found and processed
-
+                break
 
     elif call.data.startswith("deny"):
         parts = call.data.split(":")
@@ -143,22 +187,21 @@ def handle_callback(call):
         logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H)
         Next(userid, H, punkt, username)
 
-
 def Next(userid, H, punkt, username):
-    all_operators = Operators.objects.values()  # Получаем все данные операторов
+    all_operators = Operators.objects.values()
     
     queryset = log.objects.filter(teleid=userid, date=datetime.datetime.today(), H=H).order_by('id')
     results = queryset.first()
     print(punkt)
 
-    if punkt < len(all_operators):  # Проверяем, что пункт в пределах количества операторов
+    if punkt < len(all_operators):
         for operator in all_operators:
-            if punkt == operator["idPunkt"]:  # Если текущий пункт совпадает с idPunkt оператора
+            if punkt == operator["idPunkt"]:
                 zone = operator["Zone"]
                 ToDo = operator["ToDo"]
                 link = operator["link"]
                 H = operator["H"]
-                            
+                
                 acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}:{punkt+1}')
                 deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}:{punkt+1}')
                 keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)
@@ -166,15 +209,20 @@ def Next(userid, H, punkt, username):
                 bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
                 break
     else:
-        finish(userid, username, results)  # Завершаем выполнение, если пункт превышает количество операторов
+        finish(userid, username, results)
 
 def finish(userid, username, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
-    bot.send_message(chat_id=chat_id, text=f"@{username} Прошел обход")
+    # bot.delete_message(chat_id=chat_id, message_id=results.message_id)
+    # bot.send_message(chat_id=userid, text=f"@{username} прошел обход")
 
-
-    # bot.edit_message_text(f"@{username} Прошел обход", chat_id=chat_id, message_id=results.message_id)
     # bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
+
+    
+
+
+
+
 
 
 def start_bot():
