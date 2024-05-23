@@ -3,10 +3,13 @@ from datetime import datetime
 import telebot
 import json
 import threading
+import pytz
 import time
 import datetime
 from telebot import types
-from .models import Start, log, Operators
+from .models import Start, log, Operators, Users
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKeyboardMarkup, InlineKeyboardButton
+import re
 
 chat_id = -1002003805171
 token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
@@ -15,24 +18,60 @@ webhook_url = "ТВОЙ IP"
 bot = telebot.TeleBot(token)
 
 
-
-# Добавил пока что формальную регистрацию
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome_new_member(message):
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    start_button = types.KeyboardButton('Регистрация')
-    keyboard.add(start_button)
-    bot.send_message(message.chat.id, 'Пройдите регистрацию', reply_markup=keyboard)
-
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    a = Users.objects.values()
+    for i in a:
+        if message.from_user.id == i["userid"]:
+            bot.send_message(message.from_user.id, "Вы уже зарегестрированы")
+            return
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     start_button = types.KeyboardButton('Регистрация')
     keyboard.add(start_button)
     bot.send_message(message.chat.id, 'Пройдите регистрацию', reply_markup=keyboard)
+    bot.register_next_step_handler(message, handle_reg)
+
+
+def handle_reg(message):
+    entry = Users.objects.create(datetime = str(datetime.datetime.now(pytz.utc)),
+                                 userid = message.from_user.id,
+                                 username = message.from_user.username,
+                                 number = "123",
+                                 department = "o")
+
+    entry.save()
+
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    button_phone = KeyboardButton(text="Отправить мой номер телефона", request_contact=True)
+    markup.add(button_phone)
+    bot.send_message(message.chat.id, "Пожалуйста, отправьте свой номер телефона или введите его с клавиатуры.", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_phone_number)
+
+
+
+def handle_phone_number(message: Message):
+    try:
+        bot.delete_message(message.from_user.id, message.message_id-1)
+        bot.delete_message(message.from_user.id, message.message_id)
+    except:
+        pass
+    if message.contact:
+        phone_number = message.contact.phone_number
+    else:
+        phone_number = message.text
+
+    if phone_number:
+        standardized_phone_number = phone_number
+        if phone_number.startswith("+7"):
+            standardized_phone_number = re.sub(r'^\+7', '7', phone_number)  # Заменяем "+7" на "8"
+        elif phone_number.startswith("8"):
+            standardized_phone_number = re.sub(r'^8', '7', phone_number)  # Заменяем "8" на "7"
+        
+        cleaned_phone_number = re.sub(r'[()\s-]', '', standardized_phone_number)
+        Operators.objects.filter(userid=message.from_user.id).update(number = cleaned_phone_number)
+
 
 # Выбор должности
-@bot.message_handler(func=lambda message: message.text == 'Регистрация')
 def handle_registration(message):
     markup = types.InlineKeyboardMarkup()
     admin_button = types.InlineKeyboardButton("Админ", callback_data="admin")
@@ -49,13 +88,10 @@ def handle_registration(message):
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     hide_keyboard = types.ReplyKeyboardRemove()
-    if call.data == "admin":
-        bot.send_message(call.from_user.id, "Ссылка на инвайт для админов: https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
-    elif call.data == "operator":
-        bot.send_message(call.from_user.id, "Ссылка на инвайт для операторов: https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+    bot.send_message(call.from_user.id, "Ссылка на инвайт для админов: https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
     
     # Удаление сообщения с инлайн-кнопками
-    bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+    # bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
 
 
 

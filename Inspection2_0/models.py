@@ -19,6 +19,14 @@ class Operators(models.Model):
     H = models.IntegerField("Номер обхода")
 
 
+class Users(models.Model):
+    datetime = models.DateTimeField("Дата")
+    userid = models.IntegerField("Айди")
+    username = models.TextField("Имя")
+    number = models.TextField("Номер телефона")
+    department = models.TextField("Отдел")
+
+
 
 class log(models.Model):
     date = models.DateField()
