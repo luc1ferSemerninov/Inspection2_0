@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Start(models.Model):
     time_start = models.TimeField("Время начала")
     group_id = models.BigIntegerField("Айди группы")
@@ -20,11 +21,14 @@ class Operators(models.Model):
 
 
 class Users(models.Model):
-    datetime = models.DateTimeField("Дата")
+    datetime = models.TextField("Дата")
     userid = models.IntegerField("Айди")
     username = models.TextField("Имя")
     number = models.TextField("Номер телефона")
     department = models.TextField("Отдел")
+    
+    def __str__(self):
+        return f"{self.datetime} - {self.userid} - {self.username} - {self.number} - {self.department}"
 
 
 

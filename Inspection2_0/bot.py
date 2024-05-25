@@ -33,16 +33,17 @@ def send_welcome(message):
 
 
 def handle_reg(message):
-    entry = Users.objects.create(datetime = str(datetime.datetime.now(pytz.utc)),
-                                 userid = message.from_user.id,
-                                 username = message.from_user.username,
-                                 number = "123",
-                                 department = "o")
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = Users.objects.create(datetime=current_datetime,
+                                 userid=message.from_user.id,
+                                 username=message.from_user.username,
+                                 number="123",
+                                 department="o")
 
     entry.save()
 
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    button_phone = KeyboardButton(text="Отправить мой номер телефона", request_contact=True)
+    button_phone = KeyboardButton(text="Отправить мой номер телефона", request_contact=True) 
     markup.add(button_phone)
     bot.send_message(message.chat.id, "Пожалуйста, отправьте свой номер телефона или введите его с клавиатуры.", reply_markup=markup)
     bot.register_next_step_handler(message, handle_phone_number)
@@ -68,30 +69,35 @@ def handle_phone_number(message: Message):
             standardized_phone_number = re.sub(r'^8', '7', phone_number)  # Заменяем "8" на "7"
         
         cleaned_phone_number = re.sub(r'[()\s-]', '', standardized_phone_number)
-        Operators.objects.filter(userid=message.from_user.id).update(number = cleaned_phone_number)
+        Users.objects.filter(userid=message.from_user.id).update(number = cleaned_phone_number)
+        handle_registration(message)
+        print(f"Занёс в БД {phone_number}")
 
 
 # Выбор должности
 def handle_registration(message):
     markup = types.InlineKeyboardMarkup()
     admin_button = types.InlineKeyboardButton("Админ", callback_data="admin")
-    operator_button = types.InlineKeyboardButton("Опер", callback_data="operator")
+    operator_button = types.InlineKeyboardButton("Оператор", callback_data="operator")
     markup.add(admin_button, operator_button)
     
     bot.send_message(message.chat.id, 'Выберите должность', reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data in ["admin", "operator"])
+def callback_query(call):
+    user_id = call.from_user.id
+    department = "Админ" if call.data == "admin" else "Оператор"
     
-    # Удаление сообщения с кнопкой "Регистрация"
-    # bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-
-
-# Отправка ссылки на группу в зависимости от должности, пока что без сохранения в БД
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
+    # Сохранение в базу данных
+    user, created = Users.objects.get_or_create(userid=user_id)
+    user.department = department
+    user.save()
+    
+    bot.send_message(call.message.chat.id, f'Вы выбрали должность: {department}')
+    
     hide_keyboard = types.ReplyKeyboardRemove()
-    bot.send_message(call.from_user.id, "Ссылка на инвайт для админов: https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
-    
-    # Удаление сообщения с инлайн-кнопками
-    # bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+    bot.send_message(call.from_user.id, "https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+
 
 
 
@@ -220,6 +226,7 @@ def handle_callback(call):
         parts = call.data.split(":")
         H = parts[1]
         punkt = int(parts[2])
+
         logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H)
         Next(userid, H, punkt, username)
 
