@@ -10,6 +10,9 @@ from telebot import types
 from .models import Start, log, Operators, Users
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKeyboardMarkup, InlineKeyboardButton
 import re
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 chat_id = -1002003805171
 token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
@@ -97,6 +100,31 @@ def callback_query(call):
     
     hide_keyboard = types.ReplyKeyboardRemove()
     bot.send_message(call.from_user.id, "https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+
+
+
+def create_and_send_pdf(user, chat_id):
+    user_logs = log.objects.filter(teleid=user.userid)
+    
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    c.drawString(100, 750, f"Отчет по обходу для пользователя: {user.username}")
+    c.drawString(100, 735, f"Отдел: {user.department}")
+
+    y = 700
+    for entry in user_logs:
+        c.drawString(100, y, f"Дата: {entry.date}, Время: {entry.time}, Зона: {entry.zone}, Результат: {entry.result}")
+        y -= 15
+
+    c.save()
+    buffer.seek(0)
+    bot.send_document(chat_id, buffer, caption="Ваш отчет по обходу")
+
+# Пример использования функций
+@bot.message_handler(commands=['generate_report'])
+def generate_report(message):
+    user = Users.objects.get(userid=message.from_user.id)
+    create_and_send_pdf(user, message.chat.id)
 
 
 
@@ -256,8 +284,9 @@ def Next(userid, H, punkt, username):
 
 def finish(userid, username, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
-    # bot.delete_message(chat_id=chat_id, message_id=results.message_id)
-    # bot.send_message(chat_id=userid, text=f"@{username} прошел обход")
+    bot.send_message(chat_id=chat_id,message_thread_id=67, text=f"@{username} Прошел обход")
+    generate_report
+
 
     # bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
 
