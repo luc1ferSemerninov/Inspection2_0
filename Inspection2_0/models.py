@@ -9,10 +9,17 @@ class Start(models.Model):
     H = models.IntegerField("Номер обхода", default='1')
 
     def __str__(self):
-        return f"{self.department} - {self.H}"
+        return f"{self.department}"
     
     
 class Operators(models.Model):
+    idPunkt = models.IntegerField("Пункт")
+    Zone = models.TextField("Зона",max_length=100)
+    ToDo = models.TextField("Задача", max_length=200)
+    link = models.TextField("Картинка", max_length=200)
+    H = models.IntegerField("Номер обхода")
+
+class Admins(models.Model):
     idPunkt = models.IntegerField("Пункт")
     Zone = models.TextField("Зона",max_length=100)
     ToDo = models.TextField("Задача", max_length=200)

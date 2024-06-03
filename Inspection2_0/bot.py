@@ -5,6 +5,7 @@ import json
 import threading
 import pytz
 import time
+import os
 import datetime
 from telebot import types
 from .models import Start, log, Operators, Users
@@ -13,6 +14,9 @@ import re
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+# from bot2 import Claim
 
 chat_id = -1002003805171
 token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
@@ -39,7 +43,7 @@ def handle_reg(message):
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = Users.objects.create(datetime=current_datetime,
                                  userid=message.from_user.id,
-                                 username=message.from_user.username,
+                                 username=message.from_user.first_name,
                                  number="123",
                                  department="o")
 
@@ -72,6 +76,7 @@ def handle_phone_number(message: Message):
             standardized_phone_number = re.sub(r'^8', '7', phone_number)  # Заменяем "8" на "7"
         
         cleaned_phone_number = re.sub(r'[()\s-]', '', standardized_phone_number)
+            
         Users.objects.filter(userid=message.from_user.id).update(number = cleaned_phone_number)
         handle_registration(message)
         print(f"Занёс в БД {phone_number}")
@@ -80,51 +85,55 @@ def handle_phone_number(message: Message):
 # Выбор должности
 def handle_registration(message):
     markup = types.InlineKeyboardMarkup()
-    admin_button = types.InlineKeyboardButton("Админ", callback_data="admin")
-    operator_button = types.InlineKeyboardButton("Оператор", callback_data="operator")
-    markup.add(admin_button, operator_button)
+    # Fetch all Start objects
+    start_objects = Start.objects.all()
     
+    # Iterate through all the Start objects and add buttons for each department
+    for start in start_objects:
+        # Add an inline keyboard button for each department
+        markup.add(types.InlineKeyboardButton(start.department, callback_data=f"dep:{start.department}"))
+    
+    # Send the message with the inline keyboard
     bot.send_message(message.chat.id, 'Выберите должность', reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data in ["admin", "operator"])
-def callback_query(call):
-    user_id = call.from_user.id
-    department = "Админ" if call.data == "admin" else "Оператор"
-    
-    # Сохранение в базу данных
-    user, created = Users.objects.get_or_create(userid=user_id)
-    user.department = department
-    user.save()
-    
-    bot.send_message(call.message.chat.id, f'Вы выбрали должность: {department}')
-    
-    hide_keyboard = types.ReplyKeyboardRemove()
-    bot.send_message(call.from_user.id, "https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+
 
 
 
 def create_and_send_pdf(user, chat_id):
     user_logs = log.objects.filter(teleid=user.userid)
     
+    # Получение домашней директории бота
+    home_directory = os.path.expanduser('~')
+    font_path = os.path.join(home_directory, r'%font', 'FreeSans.ttf')#####посмотреть как не писать длинный путь
+    
+    # Подключение шрифта для поддержки русских символов
+    pdfmetrics.registerFont(TTFont('FreeSans', font_path))
+    
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
+    
+    # Установка шрифта для текста
+    c.setFont('FreeSans', 12)
+    
     c.drawString(100, 750, f"Отчет по обходу для пользователя: {user.username}")
     c.drawString(100, 735, f"Отдел: {user.department}")
 
     y = 700
+    j = []
     for entry in user_logs:
-        c.drawString(100, y, f"Дата: {entry.date}, Время: {entry.time}, Зона: {entry.zone}, Результат: {entry.result}")
+        c.drawString(100, y, f"Время: {entry.time}, Зона: {entry.zone}, Результат: {entry.result}")
         y -= 15
-
     c.save()
     buffer.seek(0)
-    bot.send_document(chat_id, buffer, caption="Ваш отчет по обходу")
+    # Отправка документа с расширением .pdf в имени файла
+    bot.send_document(chat_id, ('report.pdf', buffer), caption="Ваш отчет по обходу")
 
 # Пример использования функций
 @bot.message_handler(commands=['generate_report'])
-def generate_report(message):
-    user = Users.objects.get(userid=message.from_user.id)
-    create_and_send_pdf(user, message.chat.id)
+def generate_report(userid):
+    user = Users.objects.get(userid=userid)
+    create_and_send_pdf(user, userid)
 
 
 
@@ -165,7 +174,6 @@ def start_time():
         # if time_now == time_start:  # Сравниваем текущее время с временем начала
         send_inspection(group, department, zone, H)
     time.sleep(60)
-
 
 def send_inspection(group, department, zone, H):
     send_photo_button = telebot.types.InlineKeyboardButton("Принять", callback_data=f'claim:{department}:{H}')  # Создаёт кнопку "Принять"
@@ -258,6 +266,24 @@ def handle_callback(call):
         logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H)
         Next(userid, H, punkt, username)
 
+
+
+    elif call.data.startswith("dep"):
+        parts = call.data.split(":")
+        department = parts[1]
+
+        user_id = call.from_user.id
+        
+        # Сохранение в базу данных
+        user, created = Users.objects.get_or_create(userid=user_id)
+        user.department = department
+        user.save()
+        
+        bot.send_message(call.message.chat.id, f'Вы выбрали должность: {department}')
+        
+        hide_keyboard = types.ReplyKeyboardRemove()
+        bot.send_message(call.from_user.id, "https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
+
 def Next(userid, H, punkt, username):
     all_operators = Operators.objects.values()
     
@@ -285,7 +311,7 @@ def Next(userid, H, punkt, username):
 def finish(userid, username, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
     bot.send_message(chat_id=chat_id,message_thread_id=67, text=f"@{username} Прошел обход")
-    generate_report
+    generate_report(userid)
 
 
     # bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
