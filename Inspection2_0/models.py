@@ -12,22 +12,59 @@ class Start(models.Model):
         return f"{self.department}"
     
     
-class Operators(models.Model):
-    idPunkt = models.IntegerField("Пункт")
+class Operator(models.Model):
+    idPunkt = models.IntegerField("Чек номер")
     Zone = models.TextField("Зона",max_length=100)
-    ToDo = models.TextField("Задача", max_length=200)
-    link = models.TextField("Картинка", max_length=200)
+    ToDo = models.TextField("Название задачи", max_length=200)
+    link = models.TextField("Ссылка на изображение", max_length=200)
     H = models.IntegerField("Номер обхода")
 
-class Admins(models.Model):
-    idPunkt = models.IntegerField("Пункт")
+class Admin(models.Model):
+    idPunkt = models.IntegerField("Чек номер")
     Zone = models.TextField("Зона",max_length=100)
-    ToDo = models.TextField("Задача", max_length=200)
-    link = models.TextField("Картинка", max_length=200)
+    ToDo = models.TextField("Название задачи", max_length=200)
+    link = models.TextField("Ссылка на изображение", max_length=200)
+    department = models.IntegerField("Номер отдела", default=0)
     H = models.IntegerField("Номер обхода")
 
 
-class Users(models.Model):
+class Animator(models.Model):
+    idPunkt = models.IntegerField("Чек номер")
+    Zone = models.TextField("Зона",max_length=100)
+    ToDo = models.TextField("Название задачи", max_length=200)
+    link = models.TextField("Ссылка на изображение", max_length=200)
+    department = models.IntegerField("Номер отдела", default=0)
+    H = models.IntegerField("Номер обхода")
+
+
+class Cashier(models.Model):
+    idPunkt = models.IntegerField("Чек номер")
+    Zone = models.TextField("Зона",max_length=100)
+    ToDo = models.TextField("Название задачи", max_length=200)
+    link = models.TextField("Ссылка на изображение", max_length=200)
+    department = models.IntegerField("Номер отдела", default=0)
+    H = models.IntegerField("Номер обхода")
+
+
+class AdminHBD(models.Model):
+    idPunkt = models.IntegerField("Чек номер")
+    Zone = models.TextField("Зона",max_length=100)
+    ToDo = models.TextField("Название задачи", max_length=200)
+    link = models.TextField("Ссылка на изображение", max_length=200)
+    department = models.IntegerField("Номер отдела", default=0)
+    H = models.IntegerField("Номер обхода")
+
+
+class Waiter(models.Model):
+    idPunkt = models.IntegerField("Чек номер")
+    Zone = models.TextField("Зона",max_length=100)
+    ToDo = models.TextField("Название задачи", max_length=200)
+    link = models.TextField("Ссылка на изображение", max_length=200)
+    department = models.IntegerField("Номер отдела", default=0)
+    H = models.IntegerField("Номер обхода")
+
+
+class User(models.Model):
     datetime = models.TextField("Дата")
     userid = models.IntegerField("Айди")
     username = models.TextField("Имя")

@@ -8,7 +8,7 @@ import time
 import os
 import datetime
 from telebot import types
-from .models import Start, log, Operators, Users
+from .models import Start, log, Operator, User
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKeyboardMarkup, InlineKeyboardButton
 import re
 from io import BytesIO
@@ -27,7 +27,7 @@ bot = telebot.TeleBot(token)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    a = Users.objects.values()
+    a = User.objects.values()
     for i in a:
         if message.from_user.id == i["userid"]:
             bot.send_message(message.from_user.id, "Вы уже зарегестрированы")
@@ -41,7 +41,7 @@ def send_welcome(message):
 
 def handle_reg(message):
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = Users.objects.create(datetime=current_datetime,
+    entry = User.objects.create(datetime=current_datetime,
                                  userid=message.from_user.id,
                                  username=message.from_user.first_name,
                                  number="123",
@@ -77,9 +77,9 @@ def handle_phone_number(message: Message):
         
         cleaned_phone_number = re.sub(r'[()\s-]', '', standardized_phone_number)
             
-        Users.objects.filter(userid=message.from_user.id).update(number = cleaned_phone_number)
+        User.objects.filter(userid=message.from_user.id).update(number = cleaned_phone_number)
         handle_registration(message)
-        print(f"Занёс в БД {phone_number}")
+        # print(f"Занёс в БД {phone_number}")
 
 
 # Выбор должности
@@ -95,6 +95,10 @@ def handle_registration(message):
     
     # Send the message with the inline keyboard
     bot.send_message(message.chat.id, 'Выберите должность', reply_markup=markup)
+
+
+        
+    
 
 
 
@@ -132,7 +136,7 @@ def create_and_send_pdf(user, chat_id):
 # Пример использования функций
 @bot.message_handler(commands=['generate_report'])
 def generate_report(userid):
-    user = Users.objects.get(userid=userid)
+    user = User.objects.get(userid=userid)
     create_and_send_pdf(user, userid)
 
 
@@ -198,12 +202,6 @@ def webhook(request):
         return HttpResponse(status=200)
 
 
-# @bot.message_handler()
-# def test_message(message):
-#     if message.from_user.id == message.chat.id:
-#         bot.reply_to(message, "Привет")
-#     return 200
-
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
@@ -245,7 +243,7 @@ def handle_callback(call):
         parts = call.data.split(":")
         H = parts[1]
         punkt = int(parts[2])
-        all_operators = Operators.objects.values()
+        all_operators = Operator.objects.values()
 
         for operator in all_operators:
             if punkt == operator["idPunkt"]:
@@ -275,7 +273,7 @@ def handle_callback(call):
         user_id = call.from_user.id
         
         # Сохранение в базу данных
-        user, created = Users.objects.get_or_create(userid=user_id)
+        user, created = User.objects.get_or_create(userid=user_id)
         user.department = department
         user.save()
         
@@ -284,8 +282,14 @@ def handle_callback(call):
         hide_keyboard = types.ReplyKeyboardRemove()
         bot.send_message(call.from_user.id, "https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
 
+        if call.message:
+            # Удаляем сообщение с клавиатурой
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+
+
 def Next(userid, H, punkt, username):
-    all_operators = Operators.objects.values()
+    all_operators = Operator.objects.values()
     
     queryset = log.objects.filter(teleid=userid, date=datetime.datetime.today(), H=H).order_by('id')
     results = queryset.first()
