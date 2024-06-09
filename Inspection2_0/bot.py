@@ -13,9 +13,12 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKe
 import re
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont, TTFError
 # from bot2 import Claim
 
 chat_id = -1002003805171
@@ -97,41 +100,66 @@ def handle_registration(message):
     bot.send_message(message.chat.id, 'Выберите должность', reply_markup=markup)
 
 
-        
-    
-
-
 
 
 
 def create_and_send_pdf(user, chat_id):
-    user_logs = log.objects.filter(teleid=user.userid)
-    
-    # Получение домашней директории бота
-    home_directory = os.path.expanduser('~')
-    font_path = os.path.join(home_directory, r'%font', 'FreeSans.ttf')#####посмотреть как не писать длинный путь
-    
-    # Подключение шрифта для поддержки русских символов
-    pdfmetrics.registerFont(TTFont('FreeSans', font_path))
-    
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    
-    # Установка шрифта для текста
-    c.setFont('FreeSans', 12)
-    
-    c.drawString(100, 750, f"Отчет по обходу для пользователя: {user.username}")
-    c.drawString(100, 735, f"Отдел: {user.department}")
+    user_logs = log.objects.filter(teleid=user.userid)[1:25]
 
-    y = 700
-    j = []
+
+    # Получение пути к текущему скрипту
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Построение пути к файлу шрифта относительно пути к текущему скрипту
+    font_path = os.path.join(script_dir, 'font', 'FreeSans.ttf')
+
+    try:
+        # Подключение шрифта для поддержки русских символов
+        pdfmetrics.registerFont(TTFont('FreeSans', font_path))
+    except TTFError as e:
+        print(f"Error loading font: {e}")
+        return
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+
+    styles = getSampleStyleSheet()
+    title = Paragraph(f"Отчет по обходу для пользователя: {user.username}", styles['Title'])
+    department = Paragraph(f"Отдел: {user.department}", styles['Normal'])
+    elements.append(title)
+    elements.append(department)
+
+    # Создание данных для таблицы
+    data = [['Время', 'Зона', 'Результат']]
     for entry in user_logs:
-        c.drawString(100, y, f"Время: {entry.time}, Зона: {entry.zone}, Результат: {entry.result}")
-        y -= 15
-    c.save()
+        data.append([str(entry.time), entry.zone, str(entry.result)])
+
+    # Создание таблицы
+    table = Table(data, colWidths=[2*inch, 2.5*inch, 1.5*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'FreeSans'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'FreeSans'),
+    ]))
+
+    elements.append(table)
+    doc.build(elements)
+
     buffer.seek(0)
     # Отправка документа с расширением .pdf в имени файла
-    bot.send_document(chat_id, ('report.pdf', buffer), caption="Ваш отчет по обходу")
+    try:
+        bot.send_document(chat_id, ('report.pdf', buffer), caption="Ваш отчет по обходу")
+    except telebot.apihelper.ApiTelegramException as e:
+        if e.result_json['description'] == "Bad Request: message is not modified":
+            print("Message is not modified: the same content is being sent.")
+        else:
+            raise e
 
 # Пример использования функций
 @bot.message_handler(commands=['generate_report'])
@@ -295,7 +323,7 @@ def Next(userid, H, punkt, username):
     results = queryset.first()
     print(punkt)
 
-    if punkt < len(all_operators):
+    if punkt < 25:  # Ограничение до 24 пунктов
         for operator in all_operators:
             if punkt == operator["idPunkt"]:
                 zone = operator["Zone"]
@@ -309,8 +337,11 @@ def Next(userid, H, punkt, username):
 
                 bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
                 break
+        else:
+            finish(userid, username, results)
     else:
         finish(userid, username, results)
+
 
 def finish(userid, username, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
