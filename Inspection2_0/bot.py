@@ -8,7 +8,7 @@ import time
 import os
 import datetime
 from telebot import types
-from .models import Start, log, Operator, User
+from .models import Start, log, Operator, User, Admin
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKeyboardMarkup, InlineKeyboardButton
 import re
 from io import BytesIO
@@ -193,7 +193,7 @@ def logs(username, userid, department, message_id, H, zone, punkt):
 
 def start_time():
     all_objects = Start.objects.values()
-    # Цикл, который проходится по созданным переменным и отправляет кнопку "Принять"
+
     for i in all_objects:
         time_start = i["time_start"]
         time_start = time_start.strftime("%H:%M")
@@ -208,8 +208,8 @@ def start_time():
     time.sleep(60)
 
 def send_inspection(group, department, zone, H):
-    send_photo_button = telebot.types.InlineKeyboardButton("Принять", callback_data=f'claim:{department}:{H}')  # Создаёт кнопку "Принять"
-    keyboard = telebot.types.InlineKeyboardMarkup().add(send_photo_button)  # Создаёт объект InlineKeyboardMarkup, встроенная клавиатура
+    send_photo_button = telebot.types.InlineKeyboardButton("Принять", callback_data=f'claim:{department}:{H}')
+    keyboard = telebot.types.InlineKeyboardMarkup().add(send_photo_button)
 
     # Отправляет сообщение с кнопкой "Принять"
     bot.send_message(chat_id=chat_id, message_thread_id=group, text=f'{department} Вам пришел: {zone}', reply_markup=keyboard)
@@ -240,9 +240,8 @@ def handle_callback(call):
         parts = call.data.split(":")
         department = parts[1]  # [0] это слово "claim"
         H = parts[2]
-        bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=chat_id, message_id=call.message.id)
+        bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=call.message.chat.id, message_id=call.message.id)
 
-        # Отправляем личное сообщение пользователю
         bot.send_message(call.from_user.id, "Вы приняли обход")
 
         current_datetime = datetime.datetime.now()
@@ -264,35 +263,25 @@ def handle_callback(call):
         )
         log_entry.save()
 
-        Next(userid, H, 1, username)
+        Next(userid, H, 1, username, department)
 
     elif call.data.startswith("accept"):
         bot.delete_message(userid, call.message.id)
         parts = call.data.split(":")
         H = parts[1]
         punkt = int(parts[2])
-        all_operators = Operator.objects.values()
+        department = parts[3] if len(parts) > 3 else "operator"  # Default to "operator"
 
-        for operator in all_operators:
-            if punkt == operator["idPunkt"]:
-                zone = operator["Zone"]
-                ToDo = operator["ToDo"]
-                link = operator["link"]
-                H = operator["H"]
-
-                logs(username=username, userid=userid, department="Оператор", message_id=call.message.id, H=H, zone=zone, punkt=punkt)
-                Next(userid, H, punkt, username)
-                break
+        Next(userid, H, punkt, username, department)
 
     elif call.data.startswith("deny"):
         parts = call.data.split(":")
         H = parts[1]
         punkt = int(parts[2])
+        department = parts[3] if len(parts) > 3 else "operator"  # Default to "operator"
 
         logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H)
-        Next(userid, H, punkt, username)
-
-
+        Next(userid, H, punkt, username, department)
 
     elif call.data.startswith("dep"):
         parts = call.data.split(":")
@@ -300,7 +289,6 @@ def handle_callback(call):
 
         user_id = call.from_user.id
         
-        # Сохранение в базу данных
         user, created = User.objects.get_or_create(userid=user_id)
         user.department = department
         user.save()
@@ -311,33 +299,43 @@ def handle_callback(call):
         bot.send_message(call.from_user.id, "https://t.me/+Lofj5NaqOcdjOTgy", reply_markup=hide_keyboard)
 
         if call.message:
-            # Удаляем сообщение с клавиатурой
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
 
-
-
-def Next(userid, H, punkt, username):
-    all_operators = Operator.objects.values()
+def Next(userid, H, punkt, username, department):
+    print(f"Next function called with: userid={userid}, H={H}, punkt={punkt}, username={username}, department={department}")
     
+    if department.lower() == "оператор":
+        all_tasks = Operator.objects.filter(department="operator").values()
+    elif department.lower() == "администратор":
+        all_tasks = Admin.objects.filter(department="admin").values()
+    else:
+        all_tasks = []
+
+    print(f"Filtered all_tasks length: {len(all_tasks)}")
+
     queryset = log.objects.filter(teleid=userid, date=datetime.datetime.today(), H=H).order_by('id')
     results = queryset.first()
-    print(punkt)
+    print(f"Punkt: {punkt}, all_tasks length: {len(all_tasks)}")
 
-    if punkt < 25:  # Ограничение до 24 пунктов
-        for operator in all_operators:
-            if punkt == operator["idPunkt"]:
-                zone = operator["Zone"]
-                ToDo = operator["ToDo"]
-                link = operator["link"]
-                H = operator["H"]
+    task_found = False
+    if punkt < 25:
+        for task in all_tasks:
+            print(f"Checking task: {task['idPunkt']} against punkt: {punkt}")
+            if punkt == task["idPunkt"]:
+                zone = task["Zone"]
+                ToDo = task["ToDo"]
+                link = task["link"]
+                H = task["H"]
                 
-                acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}:{punkt+1}')
-                deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}:{punkt+1}')
+                acc = telebot.types.InlineKeyboardButton("Готово", callback_data=f'accept:{H}:{punkt+1}:{department}')
+                deny = telebot.types.InlineKeyboardButton("Не получается", callback_data=f'deny:{H}:{punkt+1}:{department}')
                 keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)
 
                 bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
+                task_found = True
                 break
-        else:
+        
+        if not task_found:
             finish(userid, username, results)
     else:
         finish(userid, username, results)
@@ -345,17 +343,22 @@ def Next(userid, H, punkt, username):
 
 def finish(userid, username, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
-    bot.send_message(chat_id=chat_id,message_thread_id=67, text=f"@{username} Прошел обход")
+
     generate_report(userid)
-
-
-    # bot.edit_message_text(chat_id = chat_id, text=f"@{username} прошел обход", message_id=results.message_id)
-
     
+    user = User.objects.get(userid=userid)
+    department = user.department.lower()
+    
+    print(f"Department: {department}")
 
-
-
-
+    if department == "оператор":
+        bot.send_message(chat_id=chat_id, message_thread_id=67, text=f"@{username} Прошел обход")
+        # print(thread_id)
+    elif department == "администратор":
+        bot.send_message(chat_id=chat_id, message_thread_id=70, text=f"@{username} Прошел обход")
+        # print(thread_id)
+    else:
+        bot.send_message(chat_id=userid, text="Не удалось отправить сообщение в тему.")
 
 
 def start_bot():

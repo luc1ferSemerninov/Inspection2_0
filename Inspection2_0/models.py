@@ -1,5 +1,5 @@
 from django.db import models
-
+from adminsortable.models import Sortable
 
 class Start(models.Model):
     time_start = models.TimeField("Время начала")
@@ -18,13 +18,14 @@ class Operator(models.Model):
     ToDo = models.TextField("Название задачи", max_length=200)
     link = models.TextField("Ссылка на изображение", max_length=200)
     H = models.IntegerField("Номер обхода")
+    department = models.CharField(max_length=50, default="operator")
 
 class Admin(models.Model):
     idPunkt = models.IntegerField("Чек номер")
     Zone = models.TextField("Зона",max_length=100)
     ToDo = models.TextField("Название задачи", max_length=200)
     link = models.TextField("Ссылка на изображение", max_length=200)
-    department = models.IntegerField("Номер отдела", default=0)
+    department = models.CharField(max_length=50, default="admin")
     H = models.IntegerField("Номер обхода")
 
 
@@ -88,6 +89,6 @@ class log(models.Model):
     message_id = models.BigIntegerField()
     department = models.TextField(max_length=100)
     H = models.IntegerField()
-    
+
     def __str__(self):
         return f"{self.date} - {self.time} - {self.who} - {self.teleid} - {self.zone} - {self.result} - {self.comment} - {self.punkt} - {self.message_id} - {self.department} - {self.H}"

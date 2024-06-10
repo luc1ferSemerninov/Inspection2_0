@@ -11,6 +11,7 @@ from .models import Waiter
 
 
 
+
 admin.site.register(Start)
 admin.site.register(Operator)
 admin.site.register(log)
