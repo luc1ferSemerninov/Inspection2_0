@@ -103,8 +103,9 @@ def handle_registration(message):
 
 
 
-def create_and_send_pdf(user, chat_id):
-    user_logs = log.objects.filter(teleid=user.userid)[1:25]
+def create_and_send_pdf(user, H):
+    date = datetime.datetime.now().date().isoformat()
+    user_logs = log.objects.filter(teleid=user.userid, H=H, date=date)
 
 
     # Получение пути к текущему скрипту
@@ -154,7 +155,7 @@ def create_and_send_pdf(user, chat_id):
     buffer.seek(0)
     # Отправка документа с расширением .pdf в имени файла
     try:
-        bot.send_document(chat_id, ('report.pdf', buffer), caption="Ваш отчет по обходу")
+        bot.send_document(chat_id, (f'{user.department}-{date}.pdf', buffer), caption=f"{user.department} - отчет по обходу")
     except telebot.apihelper.ApiTelegramException as e:
         if e.result_json['description'] == "Bad Request: message is not modified":
             print("Message is not modified: the same content is being sent.")
@@ -163,9 +164,9 @@ def create_and_send_pdf(user, chat_id):
 
 # Пример использования функций
 @bot.message_handler(commands=['generate_report'])
-def generate_report(userid):
+def generate_report(userid, H):
     user = User.objects.get(userid=userid)
-    create_and_send_pdf(user, userid)
+    create_and_send_pdf(user, H)
 
 
 
@@ -235,52 +236,65 @@ def webhook(request):
 def handle_callback(call):
     userid = call.from_user.id
     username = call.from_user.username
+    department1 = User.objects.filter(userid=userid).first()
+    if department1.department.lower() == "оператор":
+        dep = Operator
+    elif department1.department.lower() == "администратор":
+        dep = Admin
+    else:
+        dep = Operator
 
     if call.data.startswith('claim'):
         parts = call.data.split(":")
         department = parts[1]  # [0] это слово "claim"
-        H = parts[2]
-        bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=call.message.chat.id, message_id=call.message.id)
+        print(department1.department, department)
+        if department1.department == department:
+            H = parts[2]
+            bot.edit_message_text(f"@{call.from_user.username} Принял обход", chat_id=call.message.chat.id, message_id=call.message.id)
 
-        bot.send_message(call.from_user.id, "Вы приняли обход")
+            bot.send_message(call.from_user.id, "Вы приняли обход")
 
-        current_datetime = datetime.datetime.now()
-        current_date_iso = current_datetime.date().isoformat()
-        time_now = current_datetime.time().strftime("%H:%M:%S")
+            current_datetime = datetime.datetime.now()
+            current_date_iso = current_datetime.date().isoformat()
+            time_now = current_datetime.time().strftime("%H:%M:%S")
 
-        log_entry = log.objects.create(
-            date=current_date_iso,
-            time=time_now,
-            who=username,
-            teleid=userid,
-            zone="Принял обход",
-            result=1,
-            comment="+",
-            department=department,
-            H=H,
-            punkt=1,
-            message_id=call.message.id
-        )
-        log_entry.save()
+            log_entry = log.objects.create(
+                date=current_date_iso,
+                time=time_now,
+                who=username,
+                teleid=userid,
+                zone="Принял обход",
+                result=1,
+                comment="+",
+                department=department,
+                H=H,
+                punkt=1,
+                message_id=call.message.id
+            )
+            log_entry.save()
 
-        Next(userid, H, 1, username, department)
+            Next(userid, H, 1, username, department)
+        else:
+            bot.answer_callback_query(call.id, "Ты сюда не подходишь")
 
     elif call.data.startswith("accept"):
         bot.delete_message(userid, call.message.id)
         parts = call.data.split(":")
         H = parts[1]
         punkt = int(parts[2])
-        department = parts[3] if len(parts) > 3 else "operator"  # Default to "operator"
-
+        department = parts[3]
+        zone = dep.objects.filter(idPunkt=punkt).first()
+        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt)
         Next(userid, H, punkt, username, department)
 
     elif call.data.startswith("deny"):
+        bot.delete_message(userid, call.message.id)
         parts = call.data.split(":")
         H = parts[1]
         punkt = int(parts[2])
-        department = parts[3] if len(parts) > 3 else "operator"  # Default to "operator"
-
-        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H)
+        department = parts[3]
+        zone = dep.objects.filter(idPunkt=punkt).first()
+        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt)
         Next(userid, H, punkt, username, department)
 
     elif call.data.startswith("dep"):
@@ -305,11 +319,14 @@ def Next(userid, H, punkt, username, department):
     print(f"Next function called with: userid={userid}, H={H}, punkt={punkt}, username={username}, department={department}")
     
     if department.lower() == "оператор":
-        all_tasks = Operator.objects.filter(department="operator").values()
+        all_tasks = Operator.objects.filter(H=H).values()
     elif department.lower() == "администратор":
-        all_tasks = Admin.objects.filter(department="admin").values()
+        all_tasks = Admin.objects.filter(H=H).values()
     else:
         all_tasks = []
+    
+    
+
 
     print(f"Filtered all_tasks length: {len(all_tasks)}")
 
@@ -318,7 +335,7 @@ def Next(userid, H, punkt, username, department):
     print(f"Punkt: {punkt}, all_tasks length: {len(all_tasks)}")
 
     task_found = False
-    if punkt < 25:
+    if punkt < len(all_tasks)+1:
         for task in all_tasks:
             print(f"Checking task: {task['idPunkt']} against punkt: {punkt}")
             if punkt == task["idPunkt"]:
@@ -332,19 +349,20 @@ def Next(userid, H, punkt, username, department):
                 keyboard = telebot.types.InlineKeyboardMarkup().add(acc, deny)
 
                 bot.send_photo(chat_id=userid, photo=link, caption=f'{punkt}. {zone}: {ToDo}', reply_markup=keyboard)
+               
                 task_found = True
                 break
         
         if not task_found:
-            finish(userid, username, results)
+            finish(userid, username,H, results)
     else:
-        finish(userid, username, results)
+        finish(userid, username,H, results)
 
 
-def finish(userid, username, results):
+def finish(userid, username, H, results):
     bot.send_message(chat_id=userid, text="Вы прошли обход")
 
-    generate_report(userid)
+    generate_report(userid, H)
     
     user = User.objects.get(userid=userid)
     department = user.department.lower()

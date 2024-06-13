@@ -1,5 +1,4 @@
 from django.db import models
-from adminsortable.models import Sortable
 
 class Start(models.Model):
     time_start = models.TimeField("Время начала")
@@ -9,7 +8,7 @@ class Start(models.Model):
     H = models.IntegerField("Номер обхода", default='1')
 
     def __str__(self):
-        return f"{self.department}"
+        return f"{self.department} - {self.zone}"
     
     
 class Operator(models.Model):
@@ -74,8 +73,6 @@ class User(models.Model):
     
     def __str__(self):
         return f"{self.datetime} - {self.userid} - {self.username} - {self.number} - {self.department}"
-
-
 
 class log(models.Model):
     date = models.DateField()
