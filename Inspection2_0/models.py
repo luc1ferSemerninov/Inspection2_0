@@ -67,13 +67,14 @@ class Waiter(models.Model):
 class User(models.Model):
     datetime = models.TextField("Дата")
     userid = models.IntegerField("Айди")
-    username = models.TextField("Имя")
+    username = models.TextField("Username")
+    name = models.TextField("Имя", default="Безымянный")
     number = models.TextField("Номер телефона")
     department = models.TextField("Отдел")
     admin = models.BooleanField("Администратор", default=False)
     
     def __str__(self):
-        return f"{self.datetime} - {self.userid} - {self.username} - {self.number} - {self.department}"
+        return f"{self.datetime} - {self.userid} - {self.name} - {self.number} - {self.department}"
 
 class log(models.Model):
     date = models.DateField()
@@ -90,3 +91,4 @@ class log(models.Model):
 
     def __str__(self):
         return f"{self.date} - {self.time} - {self.who} - {self.teleid} - {self.zone} - {self.result} - {self.comment} - {self.punkt} - {self.message_id} - {self.department} - {self.H}"
+    

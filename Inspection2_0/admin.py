@@ -1,13 +1,5 @@
 from django.contrib import admin
-from .models import Start
-from .models import Operator
-from .models import log
-from .models import User
-from .models import Admin
-from .models import Animator
-from .models import Cashier
-from .models import AdminHBD
-from .models import Waiter
+from .models import Start, Operator, log, User, Admin,Animator,Cashier,AdminHBD,Waiter
 
 
 

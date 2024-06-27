@@ -8,7 +8,7 @@ import time
 import os
 import datetime
 from telebot import types
-from .models import Start, log, Operator, User, Admin
+from .models import Start, log, Operator, User, Admin, Cashier
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKeyboardMarkup, InlineKeyboardButton
 import re
 from io import BytesIO
@@ -25,9 +25,7 @@ token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
 webhook_url = "ТВОЙ IP"
 
 bot = telebot.TeleBot(token)
-@bot.message_handler()
-def main(message):
-    bot.send_message(message.from_user.id, "Привет, все обходы принимаются в группе")
+
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -51,14 +49,20 @@ def adminpanel(message):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
         markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+        markup.add(types.InlineKeyboardButton("Поменять человеку отдел", callback_data=f"switch"))
         bot.send_message(message.from_user.id, "Првиет админ, выбери действие", reply_markup=markup)
     
 
-def handle_reg(message):
+def handle_reg(message: Message):
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if message.from_user.username:
+        username = message.from_user.username
+    else:
+        username = "-"
     entry = User.objects.create(datetime=current_datetime,
                                  userid=message.from_user.id,
-                                 username=message.from_user.first_name,
+                                 username=username,
+                                 name = message.from_user.full_name,
                                  number="123",
                                  department="o")
 
@@ -100,13 +104,13 @@ def handle_phone_number(message: Message):
 # Выбор должности
 def handle_registration(message):
     markup = types.InlineKeyboardMarkup()
-    # Fetch all Start objects
     start_objects = Start.objects.all()
-    
-    # Iterate through all the Start objects and add buttons for each department
+    unique_names = set()
     for start in start_objects:
-        # Add an inline keyboard button for each department
-        markup.add(types.InlineKeyboardButton(start.department, callback_data=f"dep:{start.department}"))
+        unique_names.add(start.department)
+    for name in unique_names:
+        markup.add(types.InlineKeyboardButton(name, callback_data=f"dep:{name}"))
+    
     
     # Send the message with the inline keyboard
     bot.send_message(message.chat.id, 'Выберите должность', reply_markup=markup)
@@ -119,7 +123,10 @@ def create_and_send_pdf(user, H):
     date = datetime.datetime.now().date().isoformat()
     user_logs = log.objects.filter(teleid=user.userid, H=H, date=date, department=user.department)
 
-
+    styles = getSampleStyleSheet()
+    styles['Title'].fontName = 'FreeSans'
+    styles['Title'].fontSize = 16
+    styles['Title'].alignment = 'CENTER'
     # Получение пути к текущему скрипту
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # Построение пути к файлу шрифта относительно пути к текущему скрипту
@@ -138,8 +145,8 @@ def create_and_send_pdf(user, H):
     elements = []
 
     styles = getSampleStyleSheet()
-    title = Paragraph(f"Отчет по обходу для пользователя: {user.username}", styles['Title'])
-    department = Paragraph(f"Отдел: {user.department}", styles['Normal'])
+    title = Paragraph(f"Отчет по обходу для пользователя: {user.username}", styles['Title'],encoding='utf-8')
+    department = Paragraph(f"Отдел: {user.department}", styles['Title'])
     elements.append(title)
     elements.append(department)
 
@@ -254,6 +261,8 @@ def handle_callback(call):
         dep = Operator
     elif department1.department.lower() == "администратор":
         dep = Admin
+    elif department1.department.lower() == "кассир":
+        dep = Cashier
     else:
         dep = Operator
 
@@ -298,8 +307,9 @@ def handle_callback(call):
         department = parts[3]
         zone = dep.objects.filter(idPunkt=punkt-1, H = H).first()
         logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt, result = True)
-        bot.send_message(userid, "Отправь видео-отчет кружочком")
-        bot.register_next_step_handler(call.message, videonote_check, userid, H, punkt, username, department)
+        # bot.send_message(userid, "Отправь видео-отчет кружочком")
+        # bot.register_next_step_handler(call.message, videonote_check, userid, H, punkt, username, department)
+        Next(userid, H, punkt, username, department)
 
     elif call.data.startswith("deny"):
         bot.delete_message(userid, call.message.id)
@@ -354,6 +364,56 @@ def handle_callback(call):
             bot.edit_message_text(st, call.from_user.id, message_id=call.message.id)
             bot.register_next_step_handler(message=call.message, callback=change_time)
 
+    elif call.data.startswith("switch"):
+        a = User.objects.filter(userid = call.from_user.id).first()
+        if a.admin:
+            users = User.objects.values()
+            st = 'Введите номер человека, которому хотите поменять отдел:\n'
+            print(users)
+            l = 0
+            for i in users:
+                l=l+1
+                st += f'{l}. {i["username"]} - {i["name"]} - {i["department"]}\n'
+            bot.edit_message_text(st, call.from_user.id, message_id=call.message.id)
+            bot.register_next_step_handler(message=call.message, callback=change_dep)
+
+def change_dep(message: Message):
+    try:
+        users = User.objects.values()
+        nomber = int(message.text)
+        if nomber > len(users):
+            bot.send_message(message.from_user.id, "Введите корректное число")
+            bot.register_next_step_handler(message, change_dep)
+        else:
+            ins = users[nomber-1]
+            markup = types.ReplyKeyboardMarkup()
+            start_objects = Start.objects.all()
+            unique_names = set()
+            for start in start_objects:
+                unique_names.add(start.department)
+            for name in unique_names:
+                markup.add(types.KeyboardButton(f'd:{name}'))
+            bot.send_message(message.from_user.id, "Выберите отдел для этого человека", reply_markup=markup)
+            bot.register_next_step_handler(message, change_dep2, ins)
+    except:
+        bot.send_message(message.from_user.id, "Введите корректное число")
+        bot.register_next_step_handler(message, change_dep)
+
+def change_dep2(message: Message, ins):
+    try:
+        i, name = message.text.split(':')
+        User.objects.filter(id=ins['id']).update(department = name)
+        s = bot.send_message(message.from_user.id, "Готово", reply_markup=types.ReplyKeyboardRemove()).message_id
+        bot.delete_message(message.from_user.id, s)
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
+        markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+        markup.add(types.InlineKeyboardButton("Поменять человеку отдел", callback_data=f"switch"))
+        bot.send_message(message.from_user.id, "Готово, вот снова админская панель", reply_markup=markup)
+    except:
+        bot.send_message(message.from_user.id, "Выберите отдел из меню ниже")
+        bot.register_next_step_handler(message, change_dep2)
+
 
 
 @bot.message_handler(content_types=['video_note'])
@@ -403,6 +463,7 @@ def change_time2(message: Message, ins):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
         markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+        markup.add(types.InlineKeyboardButton("Поменять человеку отдел", callback_data=f"switch"))
         bot.send_message(message.from_user.id, "Готово, вот снова админская панель", reply_markup=markup)
     except:
         bot.send_message(message.from_user.id, "Введите корректное число")
@@ -422,6 +483,7 @@ def resend(message: Message):
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
             markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+            markup.add(types.InlineKeyboardButton("Поменять человеку отдел", callback_data=f"switch"))
             bot.send_message(message.from_user.id, "Готово, вот снова админская панель", reply_markup=markup)
     except:
         bot.send_message(message.from_user.id, "Введите корректное число")
@@ -437,6 +499,8 @@ def Next(userid, H, punkt, username, department):
         all_tasks = Operator.objects.filter(H=H).values()
     elif department.lower() == "администратор":
         all_tasks = Admin.objects.filter(H=H).values()
+    elif department.lower() == "кассир":
+        all_tasks = Cashier.objects.filter(H=H).values()
     else:
         all_tasks = []
     
@@ -490,6 +554,9 @@ def finish(userid, username, H, results):
         # print(thread_id)
     elif department == "администратор":
         bot.send_message(chat_id=chat_id, message_thread_id=70, text=f"@{username} Прошел обход")
+        # print(thread_id)
+    elif department == "кассир":
+        bot.send_message(chat_id=chat_id, message_thread_id=1622, text=f"@{username} Прошел обход")
         # print(thread_id)
     else:
         bot.send_message(chat_id=userid, text="Не удалось отправить сообщение в тему.")
