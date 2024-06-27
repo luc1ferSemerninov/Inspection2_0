@@ -8,6 +8,7 @@ import time
 import os
 import datetime
 from telebot import types
+import telebot.ext
 from .models import Start, log, Operator, User, Admin, Cashier
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, Message, InlineKeyboardMarkup, InlineKeyboardButton
 import re
@@ -23,8 +24,32 @@ from reportlab.pdfbase.ttfonts import TTFont, TTFError
 chat_id = -1002003805171
 token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
 webhook_url = "ТВОЙ IP"
-
 bot = telebot.TeleBot(token)
+
+
+
+@bot.message_handler(content_types=['new_chat_members'])
+def handle_new_chat_member(message):
+    new_members = message.new_chat_members
+    chat_id = message.chat.id
+    
+    for member in new_members:
+        if member == bot.get_me():
+            continue  # Игнорируем событие, если бот сам присоединился к чату
+        
+        # Создаем inline клавиатуру с одной кнопкой
+        inline_keyboard = types.InlineKeyboardMarkup()
+        inline_keyboard.add(types.InlineKeyboardButton(text="Начать", url=f"https://t.me/{bot.get_me().username}?start=start"))
+        
+        try:
+            # Отправляем сообщение с inline клавиатурой
+            bot.send_message(member.id, "Привет! Для начала работы нажмите на кнопку 'Начать'.", reply_markup=inline_keyboard)
+        except Exception as e:
+            # Если не удалось отправить личное сообщение, отправляем сообщение в группу
+            bot.send_message(chat_id, f"Не удалось отправить личное сообщение пользователю {member.username} - {member.full_name}. "
+                                      f"Пожалуйста, напишите мне в личные сообщения и нажмите /start.", reply_markup=inline_keyboard)
+
+
 
 
 @bot.message_handler(commands=['start'])
@@ -145,7 +170,7 @@ def create_and_send_pdf(user, H):
     elements = []
 
     styles = getSampleStyleSheet()
-    title = Paragraph(f"Отчет по обходу для пользователя: {user.username}", styles['Title'],encoding='utf-8')
+    title = Paragraph(f"Отчет по обходу для пользователя: {user.name}", styles['Title'],encoding='utf-8')
     department = Paragraph(f"Отдел: {user.department}", styles['Title'])
     elements.append(title)
     elements.append(department)
@@ -254,17 +279,20 @@ def webhook(request):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    userid = call.from_user.id
-    username = call.from_user.username
-    department1 = User.objects.filter(userid=userid).first()
-    if department1.department.lower() == "оператор":
-        dep = Operator
-    elif department1.department.lower() == "администратор":
-        dep = Admin
-    elif department1.department.lower() == "кассир":
-        dep = Cashier
-    else:
-        dep = Operator
+    try:
+        userid = call.from_user.id
+        username = call.from_user.username
+        department1 = User.objects.filter(userid=userid).first()
+        if department1.department.lower() == "оператор":
+            dep = Operator
+        elif department1.department.lower() == "администратор":
+            dep = Admin
+        elif department1.department.lower() == "кассир":
+            dep = Cashier
+        else:
+            dep = Operator
+    except:
+        pass
 
     if call.data.startswith('claim'):
         parts = call.data.split(":")
@@ -548,18 +576,25 @@ def finish(userid, username, H, results):
     
     
     print(f"Department: {department}")
+    all_objects = Start.objects.values()
 
-    if department == "оператор":
-        bot.send_message(chat_id=chat_id, message_thread_id=67, text=f"@{username} Прошел обход")
-        # print(thread_id)
-    elif department == "администратор":
-        bot.send_message(chat_id=chat_id, message_thread_id=70, text=f"@{username} Прошел обход")
-        # print(thread_id)
-    elif department == "кассир":
-        bot.send_message(chat_id=chat_id, message_thread_id=1622, text=f"@{username} Прошел обход")
-        # print(thread_id)
-    else:
-        bot.send_message(chat_id=userid, text="Не удалось отправить сообщение в тему.")
+    for i in all_objects:
+        group = i["group_id"]
+        depart = i["department"]
+        
+        if department == depart.lower():
+            bot.send_message(chat_id=chat_id, message_thread_id=group, text=f"@{username} Прошел обход")
+            break
+
+            # print(thread_id)
+        # elif department == "администратор":
+        #     bot.send_message(chat_id=chat_id, message_thread_id=70, text=f"@{username} Прошел обход")
+        #     # print(thread_id)
+        # elif department == "кассир":
+        #     bot.send_message(chat_id=chat_id, message_thread_id=1622, text=f"@{username} Прошел обход")
+        #     # print(thread_id)
+        # else:
+        #     bot.send_message(chat_id=userid, text="Не удалось отправить сообщение в тему.")
 
 
 def start_bot():
