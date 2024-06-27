@@ -70,6 +70,7 @@ class User(models.Model):
     username = models.TextField("Имя")
     number = models.TextField("Номер телефона")
     department = models.TextField("Отдел")
+    admin = models.BooleanField("Администратор", default=False)
     
     def __str__(self):
         return f"{self.datetime} - {self.userid} - {self.username} - {self.number} - {self.department}"

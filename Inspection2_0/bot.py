@@ -1,5 +1,5 @@
 from django.http.response import HttpResponse
-from datetime import datetime
+from datetime import datetime, time
 import telebot
 import json
 import threading
@@ -19,14 +19,15 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont, TTFError
-# from bot2 import Claim
 
 chat_id = -1002003805171
 token = "7156367176:AAHWf4T-36vtV8UjHjDDowYlRY--Myq1OFM"
 webhook_url = "ТВОЙ IP"
 
 bot = telebot.TeleBot(token)
-
+@bot.message_handler()
+def main(message):
+    bot.send_message(message.from_user.id, "Привет, все обходы принимаются в группе")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -41,6 +42,17 @@ def send_welcome(message):
     bot.send_message(message.chat.id, 'Пройдите регистрацию', reply_markup=keyboard)
     bot.register_next_step_handler(message, handle_reg)
 
+
+@bot.message_handler(commands=['admin'])
+def adminpanel(message):
+    a = User.objects.filter(userid = message.from_user.id).first()
+    print(a)
+    if a.admin:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
+        markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+        bot.send_message(message.from_user.id, "Првиет админ, выбери действие", reply_markup=markup)
+    
 
 def handle_reg(message):
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -105,7 +117,7 @@ def handle_registration(message):
 
 def create_and_send_pdf(user, H):
     date = datetime.datetime.now().date().isoformat()
-    user_logs = log.objects.filter(teleid=user.userid, H=H, date=date)
+    user_logs = log.objects.filter(teleid=user.userid, H=H, date=date, department=user.department)
 
 
     # Получение пути к текущему скрипту
@@ -119,6 +131,7 @@ def create_and_send_pdf(user, H):
     except TTFError as e:
         print(f"Error loading font: {e}")
         return
+
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -172,7 +185,7 @@ def generate_report(userid, H):
 
 
 
-def logs(username, userid, department, message_id, H, zone, punkt):
+def logs(username, userid, department, message_id, H, zone, punkt, result):
     current_datetime = datetime.datetime.now()
     current_date_iso = current_datetime.date().isoformat()
     time_now = current_datetime.time().strftime("%H:%M:%S")
@@ -182,7 +195,7 @@ def logs(username, userid, department, message_id, H, zone, punkt):
                 who=username,
                 teleid=userid,
                 zone=zone,
-                result=1,
+                result=result,
                 comment="+",
                 department=department,
                 H=H,
@@ -283,9 +296,10 @@ def handle_callback(call):
         H = parts[1]
         punkt = int(parts[2])
         department = parts[3]
-        zone = dep.objects.filter(idPunkt=punkt).first()
-        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt)
-        Next(userid, H, punkt, username, department)
+        zone = dep.objects.filter(idPunkt=punkt-1, H = H).first()
+        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt, result = True)
+        bot.send_message(userid, "Отправь видео-отчет кружочком")
+        bot.register_next_step_handler(call.message, videonote_check, userid, H, punkt, username, department)
 
     elif call.data.startswith("deny"):
         bot.delete_message(userid, call.message.id)
@@ -293,8 +307,8 @@ def handle_callback(call):
         H = parts[1]
         punkt = int(parts[2])
         department = parts[3]
-        zone = dep.objects.filter(idPunkt=punkt).first()
-        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt)
+        zone = dep.objects.filter(idPunkt=punkt-1, H=H).first()
+        logs(username=username, userid=userid, department=department, message_id=call.message.id, H=H, zone=zone.Zone, punkt=punkt, result = False)
         Next(userid, H, punkt, username, department)
 
     elif call.data.startswith("dep"):
@@ -314,6 +328,107 @@ def handle_callback(call):
 
         if call.message:
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+            
+    elif call.data.startswith("send"):
+        a = User.objects.filter(userid = call.from_user.id).first()
+        if a.admin:
+            starts = Start.objects.values()
+            st = 'Введите номер обхода, который Вы хотите повторно отправить:\n'
+            l = 0
+            for i in starts:
+                l=l+1
+                st += f'{l}. {i["department"]} - {i["zone"]} - {i["time_start"]}\n'
+            bot.edit_message_text(st, call.from_user.id, message_id=call.message.id)
+            bot.register_next_step_handler(message=call.message, callback=resend)
+
+    elif call.data.startswith("time"):
+        a = User.objects.filter(userid = call.from_user.id).first()
+        if a.admin:
+            starts = Start.objects.values()
+            st = 'Введите номер обхода, который Вы изменить:\n'
+            l = 0
+            for i in starts:
+                l=l+1
+                st += f'{l}. {i["department"]} - {i["zone"]} - {i["time_start"]}\n'
+            bot.edit_message_text(st, call.from_user.id, message_id=call.message.id)
+            bot.register_next_step_handler(message=call.message, callback=change_time)
+
+
+
+@bot.message_handler(content_types=['video_note'])
+def videonote_check(message: Message, userid, H, punkt, username, department):
+    video_note = message.video_note
+    file_id = video_note.file_id
+     # Получение информации о файле
+    file_info = bot.get_file(file_id)
+    
+    # Ссылка для скачивания файла
+    file_path = file_info.file_path
+    download_link = f"https://api.telegram.org/file/bot{token}/{file_path}"
+
+    bot.send_message(7319662643, f"Ссылка на видеокружок: \n {download_link}")
+
+    Next(userid, H, punkt, username, department)
+
+@bot.message_handler(content_types=['photo', 'audio', 'video', 'document', 'voice'])
+def videonote_check(message: Message, userid, H, punkt, username, department):
+    bot.send_message(message.from_user.id, "Пожалуйста, отправьте видеокружок.")
+    bot.register_next_step_handler(message, videonote_check, userid, H, punkt, username, department)
+
+
+
+
+def change_time(message: Message):
+    try:
+        starts = Start.objects.values()
+        nomber = int(message.text)
+        if nomber > len(starts):
+            bot.send_message(message.from_user.id, "Введите корректное число")
+            bot.register_next_step_handler(message, resend)
+        else:
+            ins = starts[nomber-1]
+            bot.send_message(message.from_user.id, "Введите время в формате 'чч:мм'")
+            bot.register_next_step_handler(message, change_time2, ins)
+    except:
+        bot.send_message(message.from_user.id, "Введите корректное число")
+        bot.register_next_step_handler(message, resend)
+
+def change_time2(message: Message, ins):
+    try:
+        hours, minutes = message.text.split(':')
+        print(hours, minutes)
+        ti = datetime.time(int(hours), int(minutes))
+        Start.objects.filter(id = ins['id']).update(time_start = ti)
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
+        markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+        bot.send_message(message.from_user.id, "Готово, вот снова админская панель", reply_markup=markup)
+    except:
+        bot.send_message(message.from_user.id, "Введите корректное число")
+        bot.register_next_step_handler(message, change_time2, ins)
+
+
+def resend(message: Message):
+    try:
+        starts = Start.objects.values()
+        nomber = int(message.text)
+        if nomber > len(starts):
+            bot.send_message(message.from_user.id, "Введите корректное число")
+            bot.register_next_step_handler(message, resend)
+        else:
+            ins = starts[nomber-1]
+            send_inspection(ins['group_id'], ins["department"], ins['zone'], ins['H'])
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("Отправить обход", callback_data=f"send"))
+            markup.add(types.InlineKeyboardButton("Изменить время начала обхода", callback_data=f"time"))
+            bot.send_message(message.from_user.id, "Готово, вот снова админская панель", reply_markup=markup)
+    except:
+        bot.send_message(message.from_user.id, "Введите корректное число")
+        bot.register_next_step_handler(message, resend)
+
+
+
 
 def Next(userid, H, punkt, username, department):
     print(f"Next function called with: userid={userid}, H={H}, punkt={punkt}, username={username}, department={department}")
@@ -366,6 +481,7 @@ def finish(userid, username, H, results):
     
     user = User.objects.get(userid=userid)
     department = user.department.lower()
+    
     
     print(f"Department: {department}")
 
